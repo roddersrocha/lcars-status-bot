@@ -1,0 +1,103 @@
+name: Captain's Log
+
+on:
+  schedule:
+    - cron: '0 */8 * * *'   # Every 8 hours: 00:00, 08:00, 16:00 UTC
+  workflow_dispatch:       # Manual trigger
+
+jobs:
+  post-log:
+    runs-on: ubuntu-latest
+    steps:
+      # -------------------------------------------------
+      # 1. Generate Stardate + Random Event + Log Text
+      # -------------------------------------------------
+      - name: Generate Captain's Log
+        run: |
+          # ---- Stardate Formula (TNG-era: 42000 + (year-2323)*1000 + day_of_year*2.74) ----
+          YEAR=$(date -u +%Y)
+          DAY_OF_YEAR=$(date -u +%j)
+          BASE=$(( (YEAR - 2323) * 1000 ))
+          FRACTION=$(awk "BEGIN {printf \"%.1f\", $DAY_OF_YEAR * 2.74}")
+          STARDATE=$(awk "BEGIN {printf \"%.1f\", 42000 + $BASE + $FRACTION}")
+
+          # ---- Random event topics ----
+          TOPICS=(
+            "engineering mishap"
+            "alien encounter"
+            "crew morale"
+            "scientific discovery"
+            "diplomatic incident"
+            "temporal anomaly"
+            "sensor ghost"
+            "supply shortage"
+            "holodeck malfunction"
+            "new lifeform detected"
+          )
+          TOPIC=$(shuf -e "${TOPICS[@]}" -n1)
+
+          # ---- Captain's Log templates (use {stardate}, {topic}) ----
+          TEMPLATES=(
+            "Captain’s Log, Stardate {stardate}. The {topic} in main engineering has been contained. Chief Engineer reports full containment within 14 minutes. No injuries."
+            "Captain’s Log, Stardate {stardate}. First contact protocol initiated following {topic}. Linguistic analysis underway. Crew standing by."
+            "Captain’s Log, Stardate {stardate}. {topic} has improved following recreational reforms. Morale index now at 87%."
+            "Captain’s Log, Stardate {stardate}. Sensors confirm {topic}. Science team requests extended observation window."
+            "Captain’s Log, Stardate {stardate}. {topic} resolved via shuttle diplomacy. Treaty draft in review."
+            "Captain’s Log, Stardate {stardate}. {topic} registered at 14:22. Cause unknown. Red alert status lifted."
+            "Captain’s Log, Stardate {stardate}. {topic} dismissed as calibration error. Long-range array recalibrated."
+            "Captain’s Log, Stardate {stardate}. Replicators offline due to {topic}. Rations distributed. ETA repair: 6 hours."
+            "Captain’s Log, Stardate {stardate}. {topic} in Holodeck 2. Safety protocols engaged. Program terminated."
+            "Captain’s Log, Stardate {stardate}. {topic} on deck 7. Medical team en route. Containment field active."
+          )
+          TEMPLATE=$(shuf -e "${TEMPLATES[@]}" -n1)
+
+          # ---- Build final log text ----
+          TEXT="${TEMPLATE//\{stardate\}/$STARDATE}"
+          TEXT="${TEXT//\{topic\}/$TOPIC}"
+
+          echo "Generated Log:"
+          echo "$TEXT"
+          echo "LOG_TEXT<<EOF" >> $GITHUB_ENV
+          echo "$TEXT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # -------------------------------------------------
+      # 2. Post to X/Twitter via OAuth 1.0a
+      # -------------------------------------------------
+      - name: Post Captain's Log
+        env:
+          API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+        run: |
+          # URL-encode credentials
+          CONSUMER_KEY=$(printf %s "$API_KEY" | jq -sRr @uri)
+          CONSUMER_SECRET=$(printf %s "$API_SECRET" | jq -sRr @uri)
+          TOKEN=$(printf %s "$ACCESS_TOKEN" | jq -sRr @uri)
+          TOKEN_SECRET=$(printf %s "$ACCESS_TOKEN_SECRET" | jq -sRr @uri)
+
+          # OAuth 1.0a signature
+          NONCE=$(openssl rand -hex 16)
+          TIMESTAMP=$(date +%s)
+          SIG_BASE="POST&https%3A%2F%2Fapi.twitter.com%2F2%2Ftweets&oauth_consumer_key%3D$CONSUMER_KEY%26oauth_nonce%3D$NONCE%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D$TIMESTAMP%26oauth_token%3D$TOKEN%26oauth_version%3D1.0"
+          SIG_KEY="$CONSUMER_SECRET&$TOKEN_SECRET"
+          SIGNATURE=$(echo -n "$SIG_BASE" | openssl dgst -sha1 -hmac "$SIG_KEY" -binary | openssl base64 | jq -sRr @uri)
+
+          AUTH_HEADER="OAuth oauth_consumer_key=\"$CONSUMER_KEY\", oauth_nonce=\"$NONCE\", oauth_signature=\"$SIGNATURE\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"$TIMESTAMP\", oauth_token=\"$TOKEN\", oauth_version=\"1.0\""
+
+          # Post tweet
+          RESPONSE=$(curl -s -X POST "https://api.twitter.com/2/tweets" \
+            -H "Authorization: $AUTH_HEADER" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"$LOG_TEXT\"}")
+
+          echo "API Response: $RESPONSE"
+          if echo "$RESPONSE" | grep -q '"id"'; then
+            ID=$(echo "$RESPONSE" | jq -r '.data.id')
+            echo "Captain’s Log transmitted! https://x.com/i/status/$ID"
+          else
+            echo "Failed to post log."
+            echo "$RESPONSE"
+            exit 1
+          fi
