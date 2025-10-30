@@ -51,7 +51,7 @@ jobs:
           REQUEST=$(shuf -e "${REQUESTS[@]}" -n1)
           OUTPUT=$(shuf -e "${OUTPUTS[@]}" -n1)
 
-          TEXT="Replicator Log: Requested \"$REQUEST\" → Dispensed: $OUTPUT. Crew advised not to consume. Again."
+          TEXT="Replicator Log: Requested \"$REQUEST\" → Dispensed: $OUTPUT. Crew advised not to consume."
           
           echo "Generated: $TEXT"
           echo "TWEET_TEXT=$TEXT" >> $GITHUB_ENV
