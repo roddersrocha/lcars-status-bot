@@ -90,4 +90,12 @@ except Exception as e:
 if should_post:
     msg = random.choice(logs)
     try:
-        api.update
+        api.update_status(msg)
+        print(f"POSTED: {msg}")
+    except Exception as e:
+        print(f"Post failed: {e}")
+else:
+    print("Post skipped (12h rule)")
+PY
+
+          python redshirt.py
