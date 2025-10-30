@@ -1,0 +1,93 @@
+name: Starfleet HR Complaint
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'     # Every 4 hours
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Tweepy
+        run: pip install tweepy
+
+      - name: Generate Script with Secrets
+        env:
+          CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+          CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+        run: |
+          cat > post_complaint.py <<'PY'
+import tweepy
+import random
+import sys
+
+# === SECRETS INJECTED BELOW ===
+CONSUMER_KEY = """{{CONSUMER_KEY}}"""
+CONSUMER_SECRET = """{{CONSUMER_SECRET}}"""
+ACCESS_TOKEN = """{{ACCESS_TOKEN}}"""
+ACCESS_TOKEN_SECRET = """{{ACCESS_TOKEN_SECRET}}"""
+
+# === Replace placeholders ===
+script = open('post_complaint.py').read()
+script = script.replace('{{CONSUMER_KEY}}', CONSUMER_KEY)
+script = script.replace('{{CONSUMER_SECRET}}', CONSUMER_SECRET)
+script = script.replace('{{ACCESS_TOKEN}}', ACCESS_TOKEN)
+script = script.replace('{{ACCESS_TOKEN_SECRET}}', ACCESS_TOKEN_SECRET)
+open('post_complaint.py', 'w').write(script)
+
+# === Validate ===
+if not all([CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET]):
+    print("ERROR: Secrets missing")
+    sys.exit(1)
+
+print("All secrets loaded")
+
+# === OAuth 1.0a ===
+auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+api = tweepy.API(auth)
+user = api.verify_credentials()
+print(f"Authenticated as @{user.screen_name}")
+
+# === Complaints ===
+complaints = [
+    "Anonymous: The replicator gave me decaf AGAIN.",
+    "Anonymous: Phaser on 'stun' feels like a hug.",
+    "Anonymous: Holodeck vacation → Borg cube.",
+    "Anonymous: Turbolift stopped on 47 decks.",
+    "Anonymous: Counselor says I need therapy.",
+    "Anonymous: Door squeaks. Engineering: 'It's ambiance.'",
+    "Anonymous: Replicated coffee tastes like warp coolant.",
+    "Anonymous: Badge fell off during red alert.",
+    "Anonymous: Captain's log: 99% dramatic pauses.",
+    "Anonymous: Hypospray hurts more than the injury."
+]
+
+msg = random.choice(complaints)
+api.update_status(msg)
+print(f"POSTED: {msg}")
+PY
+
+          # === INJECT SECRETS VIA ENVIRONMENT PRINT ===
+          python -c "
+import os
+print('CONSUMER_KEY = \"' + os.environ['CONSUMER_KEY'] + '\"')
+print('CONSUMER_SECRET = \"' + os.environ['CONSUMER_SECRET'] + '\"')
+print('ACCESS_TOKEN = \"' + os.environ['ACCESS_TOKEN'] + '\"')
+print('ACCESS_TOKEN_SECRET = \"' + os.environ['ACCESS_TOKEN_SECRET'] + '\"')
+" > inject.py
+
+          # === Run injector + main script ===
+          python inject.py
+          python post_complaint.py
