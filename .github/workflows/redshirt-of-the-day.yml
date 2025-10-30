@@ -1,0 +1,121 @@
+name: Redshirt of the Day
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'     # checks every 4 h
+  workflow_dispatch:         # manual trigger
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Tweepy
+        run: pip install tweepy
+
+      - name: Export Secrets & Run
+        env:
+          CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+          CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+        run: |
+          # make secrets visible to sed
+          export CONSUMER_KEY="$CONSUMER_KEY"
+          export CONSUMER_SECRET="$CONSUMER_SECRET"
+          export ACCESS_TOKEN="$ACCESS_TOKEN"
+          export ACCESS_TOKEN_SECRET="$ACCESS_TOKEN_SECRET"
+
+          # write Python script with safe placeholders
+          cat > redshirt.py << 'PY'
+          import tweepy, random, os
+          from datetime import datetime, timedelta, timezone
+
+          # placeholders → replaced later
+          ck = "PLACEHOLDER_CK"
+          cs = "PLACEHOLDER_CS"
+          at = "PLACEHOLDER_AT"
+          ats = "PLACEHOLDER_ATS"
+
+          # replace with real env values
+          ck = ck.replace("PLACEHOLDER_CK", os.getenv('CONSUMER_KEY', ''))
+          cs = cs.replace("PLACEHOLDER_CS", os.getenv('CONSUMER_SECRET', ''))
+          at = at.replace("PLACEHOLDER_AT", os.getenv('ACCESS_TOKEN', ''))
+          ats = ats.replace("PLACEHOLDER_ATS", os.getenv('ACCESS_TOKEN_SECRET', ''))
+
+          if not all([ck, cs, at, ats]):
+              print("ERROR: missing secrets")
+              exit(1)
+
+          print("Secrets loaded")
+
+          # OAuth 1.0a
+          auth = tweepy.OAuth1UserHandler(ck, cs, at, ats)
+          api = tweepy.API(auth)
+
+          try:
+              user = api.verify_credentials()
+              print(f"Authenticated as @{user.screen_name}")
+          except Exception as e:
+              print(f"Auth failed: {e}")
+              exit(1)
+
+          # ---- Redshirt logs ----
+          logs = [
+              "Redshirt of the Day – Final Log: \"Captain, the away team is... *static*\"",
+              "Redshirt of the Day – Final Log: \"Why did I volunteer for the landing party?\"",
+              "Redshirt of the Day – Final Log: \"Sensor readings off the… *phaser fire*\"",
+              "Redshirt of the Day – Final Log: \"It’s just a diplomatic mission, they said…\"",
+              "Redshirt of the Day – Final Log: \"My tricorder says… *scream*\"",
+              "Redshirt of the Day – Final Log: \"I’m the security officer, I’ll be fine… *explosion*\"",
+              "Redshirt of the Day – Final Log: \"Beam me up, Scotty… too late.\"",
+              "Redshirt of the Day – Final Log: \"The alien looks friendly… *zap*\"",
+              "Redshirt of the Day – Final Log: \"I only had 3 days until retirement…\"",
+              "Redshirt of the Day – Final Log: \"Red shirt? What could go wrong?\""
+          ]
+
+          # ---- 12-hour rule ----
+          should_post = True
+          try:
+              tweets = api.user_timeline(count=1)
+              if tweets:
+                  last = tweets[0].created_at.replace(tzinfo=timezone.utc)
+                  hrs = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+                  if hrs < 12:
+                      should_post = False
+                      print(f"Last post {hrs:.1f}h ago → SKIP")
+                  else:
+                      print(f"Last post {hrs:.1f}h ago → POST")
+              else:
+                  print("No tweets → FIRST POST")
+          except Exception as e:
+              print(f"Timeline error: {e} → POST anyway")
+
+          # ---- Post ----
+          if should_post:
+              msg = random.choice(logs)
+              try:
+                  api.update_status(msg)
+                  print(f"POSTED: {msg}")
+              except Exception as e:
+                  print(f"Post failed: {e}")
+          else:
+              print("Post skipped (12h rule)")
+          PY
+
+          # ---- inject real secrets ----
+          sed -i "s|PLACEHOLDER_CK|$CONSUMER_KEY|g" redshirt.py
+          sed -i "s|PLACEHOLDER_CS|$CONSUMER_SECRET|g" redshirt.py
+          sed -i "s|PLACEHOLDER_AT|$ACCESS_TOKEN|g" redshirt.py
+          sed -i "s|PLACEHOLDER_ATS|$ACCESS_TOKEN_SECRET|g" redshirt.py
+
+          # ---- execute ----
+          python redshirt.py
