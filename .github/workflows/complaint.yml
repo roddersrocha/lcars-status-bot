@@ -15,6 +15,6 @@ jobs:
           )
           TEXT="Starfleet HR Complaint (Anonymous): \"$(shuf -e "${COMPLAINTS[@]}" -n1)\" 😤"
           echo "TWEET<<EOF" >> $GITHUB_ENV && echo "$TEXT" >> $GITHUB_ENV && echo "EOF" >> $GITHUB_ENV
-      - name: Post
+      - name: Post Complaint
         env: {API_KEY: ${{secrets.TWITTER_API_KEY}}, ... }
         run: # [OAuth]
