@@ -1,21 +1,16 @@
 name: LCARS Status Bot
 
-# Every 2 hours, at :15 (less queue congestion)
 on:
   schedule:
-    - cron: '15 */2 * * *'
-  workflow_dispatch:   # manual trigger
+    - cron: '15 */2 * * *'  # Every 2 hours at :15
+  workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      # -------------------------------------------------
-      # 1. Generate a random LCARS message with ship name
-      # -------------------------------------------------
-      - name: Build LCARS tweet
+      - name: Build LCARS Tweet
         run: |
-          # ---- Starfleet ship registry (add as many as you like) ----
           SHIPS=(
             "USS Enterprise NCC-1701-D"
             "USS Voyager NCC-74656"
@@ -29,7 +24,6 @@ jobs:
             "USS Titan NCC-80102"
           )
 
-          # ---- LCARS status templates (use {ship} and {ts}) ----
           TEMPLATES=(
             "LCARS SYSTEM LOG [{ts}] — {ship} sensor grid recalibration complete. Quantum flux deviation within 0.0003%. Deep-space telemetry nominal."
             "LCARS ALERT [{ts}] — {ship} detects subspace anomaly at bearing 234.7 mark 12. Signature unmatched."
@@ -43,7 +37,6 @@ jobs:
             "LCARS CORE [{ts}] — {ship} main computer core temperature 21.3°C. Redundancy online."
           )
 
-          # ---- Random selection -------------------------------------------------
           SHIP=$(shuf -e "${SHIPS[@]}" -n1)
           TEMPLATE=$(shuf -e "${TEMPLATES[@]}" -n1)
           TS=$(date -u +"%Y-%m-%d %H:%M:%S")UTC
@@ -51,41 +44,46 @@ jobs:
           TEXT="${TEMPLATE//\{ship\}/$SHIP}"
           TEXT="${TEXT//\{ts\}/$TS}"
 
-          echo "Generated tweet:"
-          echo "$TEXT"
           echo "TWEET_TEXT<<EOF" >> $GITHUB_ENV
           echo "$TEXT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      # -------------------------------------------------
-      # 2. Post to X/Twitter (curl only)
-      # -------------------------------------------------
-      - name: Send tweet
+      - name: Post Tweet (OAuth 1.0a)
         env:
-          BEARER: ${{ secrets.X_BEARER_TOKEN }}
+          API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
         run: |
-          if [ -z "$BEARER" ]; then
-            echo "Error: X_BEARER_TOKEN secret missing!"
-            exit 1
-          fi
+          # Encode credentials
+          CONSUMER_KEY=$(printf %s "$API_KEY" | jq -sRr @uri)
+          CONSUMER_SECRET=$(printf %s "$API_SECRET" | jq -sRr @uri)
+          TOKEN=$(printf %s "$ACCESS_TOKEN" | jq -sRr @uri)
+          TOKEN_SECRET=$(printf %s "$ACCESS_TOKEN_SECRET" | jq -sRr @uri)
 
-          PAYLOAD=$(jq -n --arg txt "$TWEET_TEXT" '{"text":$txt}')
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://api.twitter.com/2/tweets" \
-            -H "Authorization: Bearer $BEARER" \
+          # Generate OAuth signature
+          NONCE=$(openssl rand -hex 16)
+          TIMESTAMP=$(date +%s)
+
+          SIG_BASE="POST&https%3A%2F%2Fapi.twitter.com%2F2%2Ftweets&oauth_consumer_key%3D$CONSUMER_KEY%26oauth_nonce%3D$NONCE%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D$TIMESTAMP%26oauth_token%3D$TOKEN%26oauth_version%3D1.0"
+          SIG_KEY="$CONSUMER_SECRET&$TOKEN_SECRET"
+          SIGNATURE=$(echo -n "$SIG_BASE" | openssl dgst -sha1 -hmac "$SIG_KEY" -binary | openssl base64 | jq -sRr @uri)
+
+          # Build header
+          AUTH_HEADER="OAuth oauth_consumer_key=\"$CONSUMER_KEY\", oauth_nonce=\"$NONCE\", oauth_signature=\"$SIGNATURE\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"$TIMESTAMP\", oauth_token=\"$TOKEN\", oauth_version=\"1.0\""
+
+          # Send tweet
+          RESPONSE=$(curl -s -X POST "https://api.twitter.com/2/tweets" \
+            -H "Authorization: $AUTH_HEADER" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
+            -d "{\"text\": \"$TWEET_TEXT\"}")
 
-          HTTP=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "HTTP $HTTP"
-          echo "Response: $BODY"
-
-          if [ "$HTTP" = "201" ]; then
-            ID=$(echo "$BODY" | jq -r '.data.id')
-            echo "Success: Tweet posted! https://x.com/i/status/$ID"
+          echo "Response: $RESPONSE"
+          if echo "$RESPONSE" | grep -q '"id"'; then
+            ID=$(echo "$RESPONSE" | jq -r '.data.id')
+            echo "LCARS transmitted! https://x.com/i/status/$ID"
           else
-            echo "Error: Failed to post (HTTP $HTTP)"
+            echo "Failed to post tweet."
+            echo "$RESPONSE"
             exit 1
           fi
