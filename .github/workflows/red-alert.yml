@@ -1,0 +1,45 @@
+name: Red Alert Drill
+
+on:
+  schedule:
+    - cron: '45 */6 * * *'  # Every 6 hours at :45
+  workflow_dispatch:
+
+jobs:
+  red-alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Red Alert
+        run: |
+          LEVELS=("Yellow Alert" "Red Alert" "Double Red Alert" "Triple Red Alert" "Omega Alert" "Self-Destruct in T-10")
+          CAUSES=("Klingon bird-of-prey decloaking" "Romulan warbird off the port bow" "Borg cube at 100,000 km" "Tribble infestation in Jefferies Tube 47" "Q playing chess with the bridge crew" "Replicator serving decaf")
+          RESPONSES=("All hands to battle stations!" "Shields up! Phasers on stun!" "Evasive pattern Delta!" "Intruder alert! Lock down turbolifts!" "Engage the Picard Maneuver!" "Someone poke the anomaly with a stick!")
+
+          LEVEL=$(shuf -e "${LEVELS[@]}" -n1)
+          CAUSE=$(shuf -e "${CAUSES[@]}" -n1)
+          RESPONSE=$(shuf -e "${RESPONSES[@]}" -n1)
+
+          TEXT="RED ALERT! $LEVEL — $CAUSE. $RESPONSE"
+          echo "ALERT_TEXT<<EOF" >> $GITHUB_ENV
+          echo "$TEXT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Broadcast Alert
+        env:
+          API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+        run: |
+          CONSUMER_KEY=$(printf %s "$API_KEY" | jq -sRr @uri)
+          CONSUMER_SECRET=$(printf %s "$API_SECRET" | jq -sRr @uri)
+          TOKEN=$(printf %s "$ACCESS_TOKEN" | jq -sRr @uri)
+          TOKEN_SECRET=$(printf %s "$ACCESS_TOKEN_SECRET" | jq -sRr @uri)
+          NONCE=$(openssl rand -hex 16)
+          TIMESTAMP=$(date +%s)
+          SIG_BASE="POST&https%3A%2F%2Fapi.twitter.com%2F2%2Ftweets&oauth_consumer_key%3D$CONSUMER_KEY%26oauth_nonce%3D$NONCE%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D$TIMESTAMP%26oauth_token%3D$TOKEN%26oauth_version%3D1.0"
+          SIG_KEY="$CONSUMER_SECRET&$TOKEN_SECRET"
+          SIGNATURE=$(echo -n "$SIG_BASE" | openssl dgst -sha1 -hmac "$SIG_KEY" -binary | openssl base64 | jq -sRr @uri)
+          AUTH_HEADER="OAuth oauth_consumer_key=\"$CONSUMER_KEY\", oauth_nonce=\"$NONCE\", oauth_signature=\"$SIGNATURE\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"$TIMESTAMP\", oauth_token=\"$TOKEN\", oauth_version=\"1.0\""
+          RESPONSE=$(curl -s -X POST "https://api.twitter.com/2/tweets" -H "Authorization: $AUTH_HEADER" -H "Content-Type: application/json" -d "{\"text\": \"$ALERT_TEXT\"}")
+          echo "$RESPONSE" | grep -q '"id"' && echo "Alert sent!" || (echo "Failed"; exit 1)
