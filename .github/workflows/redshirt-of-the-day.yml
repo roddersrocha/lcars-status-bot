@@ -21,31 +21,31 @@ jobs:
       - name: Install Tweepy
         run: pip install tweepy
 
-      - name: Create & Run Script
+      - name: Run Script
         env:
           CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
           CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
         run: |
-          cat > redshirt.py <<PY
-          import tweepy, random
+          # Export so Python can read
+          export CONSUMER_KEY
+          export CONSUMER_SECRET
+          export ACCESS_TOKEN
+          export ACCESS_TOKEN_SECRET
+
+          cat > redshirt.py << 'PY'
+          import tweepy, random, os
           from datetime import datetime, timedelta, timezone
 
-          # === SECRETS INJECTED DIRECTLY (NO sed, NO export) ===
-          ck = """$CONSUMER_KEY"""
-          cs = """$CONSUMER_SECRET"""
-          at = """$ACCESS_TOKEN"""
-          ats = """$ACCESS_TOKEN_SECRET"""
-
-          # Clean up (remove extra spaces/newlines)
-          ck = ck.strip()
-          cs = cs.strip()
-          at = at.strip()
-          ats = ats.strip()
+          # === READ FROM ENVIRONMENT ===
+          ck = os.getenv('CONSUMER_KEY')
+          cs = os.getenv('CONSUMER_SECRET')
+          at = os.getenv('ACCESS_TOKEN')
+          ats = os.getenv('ACCESS_TOKEN_SECRET')
 
           if not all([ck, cs, at, ats]):
-              print("ERROR: One or more secrets are missing or empty")
+              print("ERROR: One or more secrets missing")
               exit(1)
 
           print("All secrets loaded")
@@ -81,27 +81,4 @@ jobs:
               tweets = api.user_timeline(count=1)
               if tweets:
                   last = tweets[0].created_at.replace(tzinfo=timezone.utc)
-                  hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
-                  if hours < 12:
-                      should_post = False
-                      print(f"Last post {hours:.1f}h ago → SKIP")
-                  else:
-                      print(f"Last post {hours:.1f}h ago → POST")
-              else:
-                  print("No tweets → FIRST POST")
-          except Exception as e:
-              print(f"Timeline error: {e} → POST anyway")
-
-          # === Post ===
-          if should_post:
-              msg = random.choice(logs)
-              try:
-                  api.update_status(msg)
-                  print(f"POSTED: {msg}")
-              except Exception as e:
-                  print(f"Post failed: {e}")
-          else:
-              print("Post skipped (12h rule)")
-          PY
-
-          python redshirt.py
+                  hours = (datetime
