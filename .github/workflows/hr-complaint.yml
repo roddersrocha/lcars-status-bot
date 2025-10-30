@@ -1,5 +1,5 @@
 name: Starfleet HR
-on: { schedule: [cron: '0 */4 * * *'], workflow_dispatch: }
+on: { schedule: [cron: '0 */13 * * *'], workflow_dispatch: }
 jobs:
   post:
     runs-on: ubuntu-latest
