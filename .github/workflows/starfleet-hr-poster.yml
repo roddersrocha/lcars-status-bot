@@ -8,11 +8,6 @@ on:
 jobs:
   post-complaint:
     runs-on: ubuntu-latest
-    env:
-      CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
-      CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
-      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-      ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
 
     steps:
       - name: Checkout repository
@@ -26,39 +21,46 @@ jobs:
       - name: Install Tweepy
         run: pip install tweepy
 
-      - name: Validate Secrets & Post
+      - name: Post Starfleet HR Complaint
+        env:
+          CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+          CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
         run: |
-          python - <<'PY'
+          python - <<PY
           import tweepy
           import random
           from datetime import datetime, timedelta, timezone
           import os
 
-          # === Load and validate secrets ===
+          # === Load secrets (now available via step-level env) ===
           ck = os.getenv('CONSUMER_KEY')
           cs = os.getenv('CONSUMER_SECRET')
           at = os.getenv('ACCESS_TOKEN')
           ats = os.getenv('ACCESS_TOKEN_SECRET')
 
-          missing = [k for k, v in [('CONSUMER_KEY', ck), ('CONSUMER_SECRET', cs), 
-                                    ('ACCESS_TOKEN', at), ('ACCESS_TOKEN_SECRET', ats)] if not v]
+          missing = [k for k, v in [
+              ('CONSUMER_KEY', ck), ('CONSUMER_SECRET', cs),
+              ('ACCESS_TOKEN', at), ('ACCESS_TOKEN_SECRET', ats)
+          ] if not v or not v.strip()]
+
           if missing:
-              print(f"ERROR: Missing secrets: {', '.join(missing)}")
-              print("Go to repo Settings > Secrets and add them.")
+              print(f"ERROR: Missing or empty secrets: {', '.join(missing)}")
+              print("Check: Repo → Settings → Secrets and variables → Actions")
               exit(1)
 
-          print("All secrets loaded.")
+          print("All secrets loaded successfully.")
 
-          # === OAuth 1.0a Authentication ===
+          # === OAuth 1.0a Auth ===
           try:
               auth = tweepy.OAuth1UserHandler(ck, cs, at, ats)
               api = tweepy.API(auth)
-              # Test auth
-              api.verify_credentials()
-              print("Authentication successful!")
+              user = api.verify_credentials()
+              print(f"Authenticated as @{user.screen_name}")
           except Exception as e:
-              print(f"Authentication FAILED: {e}")
-              print("Check your API keys at https://developer.x.com")
+              print(f"Auth failed: {e}")
+              print("Double-check keys at https://developer.x.com")
               exit(1)
 
           # === Starfleet HR Complaints ===
@@ -75,32 +77,32 @@ jobs:
               "Anonymous: Sickbay's hyposprays sting more than a Tribble bite.",
           ]
 
-          # === Check last tweet (safe fallback) ===
+          # === Check last tweet (17-hour rule) ===
           should_post = True
           try:
               tweets = api.user_timeline(count=1, tweet_mode='extended')
               if tweets:
                   last_time = tweets[0].created_at.replace(tzinfo=timezone.utc)
-                  since_last = datetime.now(timezone.utc) - last_time
-                  if since_last < timedelta(hours=17):
+                  hours_since = (datetime.now(timezone.utc) - last_time).total_seconds() / 3600
+                  if hours_since < 17:
                       should_post = False
-                      print(f"Last post {since_last.total_seconds()//3600:.1f}h ago. Skipping.")
+                      print(f"Last post {hours_since:.1f}h ago. Skipping.")
                   else:
-                      print(f"Last post {since_last.total_seconds()//3600:.1f}h ago. Posting!")
+                      print(f"Last post {hours_since:.1f}h ago. Ready to post!")
               else:
-                  print("No tweets found. First post!")
+                  print("No prior tweets. First post incoming!")
           except Exception as e:
-              print(f"Could not check timeline: {e}")
-              print("Will post anyway (safe fallback).")
+              print(f"Timeline check failed: {e}")
+              print("Will post anyway (safe mode).")
 
-          # === Post if needed ===
+          # === Post the complaint ===
           if should_post:
               complaint = random.choice(complaints)
               try:
                   api.update_status(complaint)
                   print(f"SUCCESS: Posted → {complaint}")
               except Exception as e:
-                  print(f"Failed to post: {e}")
+                  print(f"Post failed: {e}")
           else:
-              print("Post skipped.")
+              print("Post skipped due to timing.")
           PY
