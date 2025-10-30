@@ -2,19 +2,15 @@ name: Replicator Malfunction of the Day
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # Every 4 hours: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
-  workflow_dispatch:       # Manual trigger
+    - cron: '0 */4 * * *'   # Every 4 hours
+  workflow_dispatch:
 
 jobs:
   replicator-fail:
     runs-on: ubuntu-latest
     steps:
-      # -------------------------------------------------
-      # 1. Generate Replicator Malfunction
-      # -------------------------------------------------
       - name: Generate Malfunction
         run: |
-          # What the crew *asked* for
           REQUESTS=(
             "Tea, Earl Grey, hot"
             "Coffee, black"
@@ -32,7 +28,6 @@ jobs:
             "Chocolate sundae, Vulcan style"
           )
 
-          # What the replicator *gave* them
           OUTPUTS=(
             "live gagh"
             "sentient tribble"
@@ -59,13 +54,8 @@ jobs:
           TEXT="Replicator Log: Requested \"$REQUEST\" → Dispensed: $OUTPUT. Crew advised not to consume. Again."
           
           echo "Generated: $TEXT"
-          echo "TWEET_TEXT<<EOF" >> $GITHUB_ENV
-          echo "$TEXT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          echo "TWEET_TEXT=$TEXT" >> $GITHUB_ENV
 
-      # -------------------------------------------------
-      # 2. Post to X/Twitter via OAuth 1.0a
-      # -------------------------------------------------
       - name: Post Malfunction Report
         env:
           API_KEY: ${{ secrets.TWITTER_API_KEY }}
@@ -88,11 +78,13 @@ jobs:
 
           AUTH_HEADER="OAuth oauth_consumer_key=\"$CONSUMER_KEY\", oauth_nonce=\"$NONCE\", oauth_signature=\"$SIGNATURE\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"$TIMESTAMP\", oauth_token=\"$TOKEN\", oauth_version=\"1.0\""
 
-          # Post tweet
+          # FIXED: Use jq to safely build JSON
+          PAYLOAD=$(jq -n --arg txt "$TWEET_TEXT" '{"text": $txt}')
+
           RESPONSE=$(curl -s -X POST "https://api.twitter.com/2/tweets" \
             -H "Authorization: $AUTH_HEADER" \
             -H "Content-Type: application/json" \
-            -d "{\"text\": \"$TWEET_TEXT\"}")
+            -d "$PAYLOAD")
 
           echo "API Response: $RESPONSE"
           if echo "$RESPONSE" | grep -q '"id"'; then
