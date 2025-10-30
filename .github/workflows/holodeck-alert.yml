@@ -10,6 +10,6 @@ jobs:
           WEAPONS=("bat'leth" "phaser rifle" "tommy gun" "lyre" "tribble launcher")
           TEXT="HOLODECK MALFUNCTION: $(shuf -e "${PROGRAMS[@]}" -n1) now armed with $(shuf -e "${WEAPONS[@]}" -n1). Evacuate Deck 12. 🚨"
           echo "TWEET<<EOF" >> $GITHUB_ENV && echo "$TEXT" >> $GITHUB_ENV && echo "EOF" >> $GITHUB_ENV
-      - name: Post
+      - name: Post Holodeck Alert
         env: {API_KEY: ${{secrets.TWITTER_API_KEY}}, ... }
         run: # [OAuth]
