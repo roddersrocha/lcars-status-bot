@@ -1,4 +1,4 @@
-name: Redshirt
+name: Redshirt of the Day
 on:
   schedule: [cron: '0 */48 * * *']
   workflow_dispatch:
