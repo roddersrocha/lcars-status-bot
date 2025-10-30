@@ -1,0 +1,20 @@
+name: Redshirt of the Day
+on:
+  schedule: [cron: '0 */12 * * *']
+  workflow_dispatch:
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Redshirt
+        run: |
+          NAMES=("Ensign Ricky" "Crewman Jenkins" "Lt. Leslie" "Yeoman Smith" "Ensign Expendable")
+          CAUSES=("transporter accident" "plasma vent rupture" "alien facehugger" "malfunctioning turbolift" "Klingon bat'leth demo")
+          NAME=$(shuf -e "${NAMES[@]}" -n1)
+          CAUSE=$(shuf -e "${CAUSES[@]}" -n1)
+          TEXT="Redshirt of the Day: $NAME — KIA in $CAUSE. A moment of silence. 🖖"
+          echo "TWEET<<EOF" >> $GITHUB_ENV && echo "$TEXT" >> $GITHUB_ENV && echo "EOF" >> $GITHUB_ENV
+      - name: Post
+        env: {API_KEY: ${{secrets.TWITTER_API_KEY}}, API_SECRET: ${{secrets.TWITTER_API_SECRET}}, ACCESS_TOKEN: ${{secrets.TWITTER_ACCESS_TOKEN}}, ACCESS_TOKEN_SECRET: ${{secrets.TWITTER_ACCESS_TOKEN_SECRET}} }
+        run: |
+          # [Same OAuth 1.0a curl post as before — paste from any working bot]
