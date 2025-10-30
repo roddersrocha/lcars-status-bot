@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+import json, time, random, subprocess, sys
+from datetime import datetime
+
+# ==== 1. PUT YOUR BEARER TOKEN HERE ====
+BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAA....your_token_here...."
+
+# ==== 2. LCARS‑style status templates ====
+TEMPLATES = [
+    "LCARS SYSTEM LOG [{ts}] — Sensor grid recalibration complete. Quantum flux deviation within 0.0003%. Deep space telemetry nominal.",
+    "LCARS ALERT [{ts}] — Subspace anomaly detected at bearing 234.7 mark 12. Signature matches no known stellar phenomena.",
+    "LCARS STATUS [{ts}] — Warp core efficiency: 99.7%. Antimatter containment stable. Crew life support optimal.",
+    "LCARS DIAGNOSTIC [{ts}] — Holodeck matrix drift corrected. Photonic resonance restored to baseline parameters.",
+    "LCARS LOG [{ts}] — Long‑range probe 47‑B reports intermittent tachyon echoes. Source unknown. Monitoring.",
+    "LCARS REPORT [{ts}] — Shield harmonics re‑modulated. Defensive grid integrity: 100%. Standby mode engaged.",
+    "LCARS UPDATE [{ts}] — Stellar cartography update in progress. 12 new Class‑M signatures added to database.",
+    "LCARS NOTICE [{ts}] — Transporter buffer integrity verified. Pattern degradation: 0.000%. Safe to proceed.",
+    "LCARS SCAN [{ts}] — Passive sweep detects encrypted signal burst. Origin: Sector 001. Decryption pending.",
+    "LCARS CORE [{ts}] — Main computer core temperature: 21.3°C. Redundancy systems online. No anomalies.",
+]
+
+# ==== 3. Generate a status line ====
+def make_status():
+    tmpl = random.choice(TEMPLATES)
+    ts   = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    return tmpl.format(ts=ts)
+
+# ==== 4. Post via curl (no external Python libs) ====
+def post_tweet(text):
+    payload = json.dumps({"text": text})
+    cmd = [
+        "curl", "-s", "-X", "POST",
+        "https://api.twitter.com/2/tweets",
+        "-H", f"Authorization: Bearer {BEARER_TOKEN}",
+        "-H", "Content-Type: application/json",
+        "-d", payload
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("curl error:", result.stderr.strip())
+        return False
+    data = json.loads(result.stdout)
+    if "data" in data:
+        print(f"Posted → {data['data']['id']}")
+        return True
+    else:
+        print("API error:", data)
+        return False
+
+# ==== 5. Main loop (post now + every 2 hours) ====
+def main():
+    print("LCARS System Status Bot — ONLINE")
+    while True:
+        status = make_status()
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {status}")
+        post_tweet(status)
+        # Sleep 2 hours (7200 seconds)
+        time.sleep(7200)
+
+if __name__ == "__main__":
+    if BEARER_TOKEN.startswith("AAAA"):
+        main()
+    else:
+        print("ERROR: Replace BEARER_TOKEN with your real token.")
+        sys.exit(1)
