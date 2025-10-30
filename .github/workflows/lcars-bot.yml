@@ -1,0 +1,38 @@
+name: LCARS Status Bot
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Every 2 hours, on the hour
+  workflow_dispatch:       # Allows manual trigger
+
+jobs:
+  post-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate LCARS Status
+        run: |
+          TEMPLATES=(
+            "LCARS SYSTEM LOG [{ts}] — Sensor grid recalibration complete. Quantum flux deviation within 0.0003%. Deep space telemetry nominal."
+            "LCARS ALERT [{ts}] — Subspace anomaly detected at bearing 234.7 mark 12. Signature matches no known stellar phenomena."
+            "LCARS STATUS [{ts}] — Warp core efficiency: 99.7%. Antimatter containment stable. Crew life support optimal."
+            "LCARS DIAGNOSTIC [{ts}] — Holodeck matrix drift corrected. Photonic resonance restored to baseline parameters."
+            "LCARS LOG [{ts}] — Long-range probe 47-B reports intermittent tachyon echoes. Source unknown. Monitoring."
+            "LCARS REPORT [{ts}] — Shield harmonics re-modulated. Defensive grid integrity: 100%. Standby mode engaged."
+            "LCARS UPDATE [{ts}] — Stellar cartography update in progress. 12 new Class-M signatures added to database."
+            "LCARS NOTICE [{ts}] — Transporter buffer integrity verified. Pattern degradation: 0.000%. Safe to proceed."
+            "LCARS SCAN [{ts}] — Passive sweep detects encrypted signal burst. Origin: Sector 001. Decryption pending."
+            "LCARS CORE [{ts}] — Main computer core temperature: 21.3°C. Redundancy systems online. No anomalies."
+          )
+          TEMPLATE=$(shuf -e "${TEMPLATES[@]}" -n1)
+          TS=$(date -u +"%Y-%m-%d %H:%M:%S")UTC
+          STATUS="${TEMPLATE//\{ts\}/$TS}"
+          echo "STATUS=$STATUS" >> $GITHUB_ENV
+
+      - name: Post to X (Twitter)
+        run: |
+          curl -X POST "https://api.twitter.com/2/tweets" \
+            -H "Authorization: Bearer ${{ secrets.X_BEARER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"$STATUS\"}"
+        env:
+          STATUS: ${{ env.STATUS }}
