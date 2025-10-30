@@ -2,15 +2,15 @@ name: Starfleet HR Complaint Poster
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # Every 4 hours
-  workflow_dispatch:
+    - cron: '0 */4 * * *'   # every 4 hours
+  workflow_dispatch:       # manual run
 
 jobs:
-  post-complaint:
+  post:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -29,12 +29,10 @@ jobs:
           ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
         run: |
           python - <<PY
-          import tweepy
-          import random
+          import tweepy, random, os
           from datetime import datetime, timedelta, timezone
-          import os
 
-          # === Load secrets (now available via step-level env) ===
+          # ---- Load & validate secrets ----
           ck = os.getenv('CONSUMER_KEY')
           cs = os.getenv('CONSUMER_SECRET')
           at = os.getenv('ACCESS_TOKEN')
@@ -46,24 +44,23 @@ jobs:
           ] if not v or not v.strip()]
 
           if missing:
-              print(f"ERROR: Missing or empty secrets: {', '.join(missing)}")
-              print("Check: Repo → Settings → Secrets and variables → Actions")
+              print(f"Missing secrets: {', '.join(missing)}")
               exit(1)
 
-          print("All secrets loaded successfully.")
+          print("Secrets loaded")
 
-          # === OAuth 1.0a Auth ===
+          # ---- OAuth 1.0a ----
+          auth = tweepy.OAuth1UserHandler(ck, cs, at, ats)
+          api = tweepy.API(auth)
+
           try:
-              auth = tweepy.OAuth1UserHandler(ck, cs, at, ats)
-              api = tweepy.API(auth)
               user = api.verify_credentials()
               print(f"Authenticated as @{user.screen_name}")
           except Exception as e:
               print(f"Auth failed: {e}")
-              print("Double-check keys at https://developer.x.com")
               exit(1)
 
-          # === Starfleet HR Complaints ===
+          # ---- Complaints ----
           complaints = [
               "Anonymous: The replicator gave me decaf AGAIN.",
               "Anonymous: My phaser is set to 'stun' but it feels more like 'mild annoyance'.",
@@ -77,32 +74,31 @@ jobs:
               "Anonymous: Sickbay's hyposprays sting more than a Tribble bite.",
           ]
 
-          # === Check last tweet (17-hour rule) ===
+          # ---- 17-hour check ----
           should_post = True
           try:
               tweets = api.user_timeline(count=1, tweet_mode='extended')
               if tweets:
-                  last_time = tweets[0].created_at.replace(tzinfo=timezone.utc)
-                  hours_since = (datetime.now(timezone.utc) - last_time).total_seconds() / 3600
-                  if hours_since < 17:
+                  last = tweets[0].created_at.replace(tzinfo=timezone.utc)
+                  hrs = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+                  if hrs < 17:
                       should_post = False
-                      print(f"Last post {hours_since:.1f}h ago. Skipping.")
+                      print(f"Last post {hrs:.1f}h ago → skipping")
                   else:
-                      print(f"Last post {hours_since:.1f}h ago. Ready to post!")
+                      print(f"Last post {hrs:.1f}h ago → posting")
               else:
-                  print("No prior tweets. First post incoming!")
+                  print("No tweets yet → first post")
           except Exception as e:
-              print(f"Timeline check failed: {e}")
-              print("Will post anyway (safe mode).")
+              print(f"Timeline check failed ({e}) → posting anyway")
 
-          # === Post the complaint ===
+          # ---- Post ----
           if should_post:
-              complaint = random.choice(complaints)
+              msg = random.choice(complaints)
               try:
-                  api.update_status(complaint)
-                  print(f"SUCCESS: Posted → {complaint}")
+                  api.update_status(msg)
+                  print(f"Posted: {msg}")
               except Exception as e:
                   print(f"Post failed: {e}")
           else:
-              print("Post skipped due to timing.")
+              print("Skipped")
           PY
