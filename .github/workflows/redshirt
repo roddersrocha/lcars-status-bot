@@ -1,6 +1,6 @@
 name: Redshirt of the Day
 on:
-  schedule: [cron: '0 */12 * * *']
+  schedule: [cron: '0 */48 * * *']
   workflow_dispatch:
 jobs:
   post:
