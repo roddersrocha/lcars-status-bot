@@ -2,7 +2,7 @@ name: Replicator Malfunction of the Day
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # Every 4 hours
+    - cron: '30 */8 * * *'   # Every 4 hours
   workflow_dispatch:
 
 jobs:
