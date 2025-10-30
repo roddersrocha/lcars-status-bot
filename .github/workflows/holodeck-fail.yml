@@ -1,0 +1,30 @@
+name: Holodeck Safety Report
+
+on:
+  schedule:
+    - cron: '30 */12 * * *'  # Twice daily
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Violation
+        run: |
+          PROGRAMS=("Sherlock Holmes" "Captain Proton" "Dixon Hill" "Fair Haven" "Vulcan Love Slave" "Battle of Thermopylae" "Risa Beach Party")
+          ISSUES=("safety protocols offline" "characters gained sentience" "gravity reversed" "photon torpedoes real" "crew trapped in loop" "holographic tribbles multiplying" "program merged with ship systems")
+          CREW=("Ensign Kim" "Lt. Barclay" "Chief O'Brien" "Nurse Ogawa" "Cadet Crusher" "Captain Janeway (again)")
+
+          PROGRAM=$(shuf -e "${PROGRAMS[@]}" -n1)
+          ISSUE=$(shuf -e "${ISSUES[@]}" -n1)
+          PERSON=$(shuf -e "${CREW[@]}" -n1)
+
+          TEXT="HOLODECK SAFETY VIOLATION: $PERSON trapped in '$PROGRAM'. $ISSUE. Emergency shutdown initiated. Again."
+          echo "TWEET<<EOF" >> $GITHUB_ENV && echo "$TEXT" >> $GITHUB_ENV && echo "EOF" >> $GITHUB_ENV
+
+      - name: Post Report
+        env:
+          API_KEY: ${{ secrets.TWITTER_API_KEY }} API_SECRET: ${{ secrets.TWITTER_API_SECRET }} ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }} ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+        run: |
+          # [Same OAuth 1.0a block as above — paste it here]
+          # ... (copy from any previous bot)
