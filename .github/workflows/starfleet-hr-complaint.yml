@@ -1,0 +1,113 @@
+name: Starfleet HR Complaint
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'     # Runs every 4 hours
+  workflow_dispatch:         # Allows manual trigger
+
+jobs:
+  post-complaint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Tweepy
+        run: pip install tweepy
+
+      - name: Post Random Complaint
+        env:
+          CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+          CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+        run: |
+          python - <<PY
+          import tweepy, random, os
+          from datetime import datetime, timedelta, timezone
+
+          # === Validate secrets (same as your other workflows) ===
+          keys = {
+              'CONSUMER_KEY': os.getenv('CONSUMER_KEY'),
+              'CONSUMER_SECRET': os.getenv('CONSUMER_SECRET'),
+              'ACCESS_TOKEN': os.getenv('ACCESS_TOKEN'),
+              'ACCESS_TOKEN_SECRET': os.getenv('ACCESS_TOKEN_SECRET')
+          }
+          missing = [k for k, v in keys.items() if not v or not v.strip()]
+          if missing:
+              print(f"Missing secrets: {', '.join(missing)}")
+              exit(1)
+          print("Secrets loaded")
+
+          # === OAuth 1.0a Auth ===
+          auth = tweepy.OAuth1UserHandler(
+              keys['CONSUMER_KEY'], keys['CONSUMER_SECRET'],
+              keys['ACCESS_TOKEN'], keys['ACCESS_TOKEN_SECRET']
+          )
+          api = tweepy.API(auth)
+
+          try:
+              user = api.verify_credentials()
+              print(f"Authenticated as @{user.screen_name}")
+          except Exception as e:
+              print(f"Auth failed: {e}")
+              exit(1)
+
+          # === Starfleet HR Complaints ===
+          complaints = [
+              "Anonymous: The replicator gave me decaf AGAIN.",
+              "Anonymous: My phaser is set to 'stun' but it feels like 'mild annoyance'.",
+              "Anonymous: The holodeck turned my beach vacation into a Klingon battle opera.",
+              "Anonymous: Turbolift stopped on EVERY deck. Again.",
+              "Anonymous: The counselor said I have 'repressed emotions'. Now I'm stressed.",
+              "Anonymous: Engineering says my squeaky door is 'character-building'.",
+              "Anonymous: Replicated coffee tastes like recycled plasma coolant.",
+              "Anonymous: My badge fell off during red alert. In front of the captain.",
+              "Anonymous: The captain's log is 90% dramatic pauses.",
+              "Anonymous: Hypospray hurts more than the injury.",
+              "Anonymous: Viewscreens need 4K upgrade. Can't see cloaked ships.",
+              "Anonymous: Shuttle parking is worse than Risa during spring break.",
+              "Anonymous: Universal translator said 'I love you' as 'I challenge you'.",
+              "Anonymous: Gravity failed in the gym. Now I'm doing zero-G yoga.",
+              "Anonymous: The AI keeps telling me to 'take a break'. Rude.",
+              "Anonymous: Uniforms shrink in the sonic shower. Again.",
+              "Anonymous: Spam from 'Borg Singles Network'. IT, do your job.",
+              "Anonymous: Jefferies tubes are not 'ergonomic'.",
+              "Anonymous: Ten Forward ran out of synthehol. Mutiny imminent.",
+              "Anonymous: PADD autocorrects 'phaser' to 'fazer'. Unacceptable."
+          ]
+
+          # === Enforce 17-hour minimum gap ===
+          should_post = True
+          try:
+              tweets = api.user_timeline(count=1, tweet_mode='extended')
+              if tweets:
+                  last_time = tweets[0].created_at.replace(tzinfo=timezone.utc)
+                  hours_ago = (datetime.now(timezone.utc) - last_time).total_seconds() / 3600
+                  if hours_ago < 17:
+                      should_post = False
+                      print(f"Last post {hours_ago:.1f}h ago → skipping")
+                  else:
+                      print(f"Last post {hours_ago:.1f}h ago → posting")
+              else:
+                  print("No tweets yet → first post")
+          except Exception as e:
+              print(f"Timeline check failed ({e}) → posting anyway")
+
+          # === Post if allowed ===
+          if should_post:
+              complaint = random.choice(complaints)
+              try:
+                  api.update_status(complaint)
+                  print(f"Posted: {complaint}")
+              except Exception as e:
+                  print(f"Post failed: {e}")
+          else:
+              print("Post skipped (17-hour rule)")
+          PY
