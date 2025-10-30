@@ -2,12 +2,17 @@ name: Starfleet HR Complaint Poster
 
 on:
   schedule:
-    - cron: '20 */12 * * *'  # Every 12 hours
-  workflow_dispatch:     # Allow manual run
+    - cron: '0 */4 * * *'  # Every 4 hours
+  workflow_dispatch:
 
 jobs:
   post-complaint:
     runs-on: ubuntu-latest
+    env:
+      CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+      CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
 
     steps:
       - name: Checkout repository
@@ -21,29 +26,42 @@ jobs:
       - name: Install Tweepy
         run: pip install tweepy
 
-      - name: Post Starfleet HR Complaint
-        env:
-          CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
-          CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+      - name: Validate Secrets & Post
         run: |
-          python - <<EOF
+          python - <<'PY'
           import tweepy
           import random
           from datetime import datetime, timedelta, timezone
           import os
 
-          # === OAuth 1.0a Setup ===
-          auth = tweepy.OAuth1UserHandler(
-              os.environ['CONSUMER_KEY'],
-              os.environ['CONSUMER_SECRET'],
-              os.environ['ACCESS_TOKEN'],
-              os.environ['ACCESS_TOKEN_SECRET']
-          )
-          api = tweepy.API(auth)
+          # === Load and validate secrets ===
+          ck = os.getenv('CONSUMER_KEY')
+          cs = os.getenv('CONSUMER_SECRET')
+          at = os.getenv('ACCESS_TOKEN')
+          ats = os.getenv('ACCESS_TOKEN_SECRET')
 
-          # === Funny Starfleet HR Complaints ===
+          missing = [k for k, v in [('CONSUMER_KEY', ck), ('CONSUMER_SECRET', cs), 
+                                    ('ACCESS_TOKEN', at), ('ACCESS_TOKEN_SECRET', ats)] if not v]
+          if missing:
+              print(f"ERROR: Missing secrets: {', '.join(missing)}")
+              print("Go to repo Settings > Secrets and add them.")
+              exit(1)
+
+          print("All secrets loaded.")
+
+          # === OAuth 1.0a Authentication ===
+          try:
+              auth = tweepy.OAuth1UserHandler(ck, cs, at, ats)
+              api = tweepy.API(auth)
+              # Test auth
+              api.verify_credentials()
+              print("Authentication successful!")
+          except Exception as e:
+              print(f"Authentication FAILED: {e}")
+              print("Check your API keys at https://developer.x.com")
+              exit(1)
+
+          # === Starfleet HR Complaints ===
           complaints = [
               "Anonymous: The replicator gave me decaf AGAIN.",
               "Anonymous: My phaser is set to 'stun' but it feels more like 'mild annoyance'.",
@@ -55,39 +73,34 @@ jobs:
               "Anonymous: My communicator badge fell off during a red alert—embarrassing!",
               "Anonymous: The captain's logs are too dramatic; can we tone down the narration?",
               "Anonymous: Sickbay's hyposprays sting more than a Tribble bite.",
-              "Anonymous: The viewscreen resolution is fuzzy; can't see enemy ships clearly.",
-              "Anonymous: Shuttlecraft parking is a nightmare; always full during shift changes.",
-              "Anonymous: The universal translator mangled my pickup line at the bar.",
-              "Anonymous: Gravity plating failed in the gym; now I'm 'floating' through workouts.",
-              "Anonymous: The ship's AI keeps suggesting I 'relax'—as if!",
-              "Anonymous: Replicated uniforms shrink in the sonic shower.",
-              "Anonymous: Borg assimilation threats in spam emails—IT, please filter better.",
-              "Anonymous: The jefferies tubes are too cramped for routine maintenance.",
-              "Anonymous: Ten Forward's happy hour doesn't have enough synthehol options.",
-              "Anonymous: My PADD autocorrects 'phaser' to 'fazer'—unprofessional!"
           ]
 
-          # === Check last tweet time (to enforce 17-hour gap) ===
-          def should_post():
-              try:
-                  tweets = api.user_timeline(count=1, tweet_mode='extended')
-                  if not tweets:
-                      return True
-                  latest = tweets[0].created_at.replace(tzinfo=timezone.utc)
-                  now = datetime.now(timezone.utc)
-                  return (now - latest) > timedelta(hours=17)
-              except Exception as e:
-                  print(f"Error checking timeline: {e}")
-                  return False
+          # === Check last tweet (safe fallback) ===
+          should_post = True
+          try:
+              tweets = api.user_timeline(count=1, tweet_mode='extended')
+              if tweets:
+                  last_time = tweets[0].created_at.replace(tzinfo=timezone.utc)
+                  since_last = datetime.now(timezone.utc) - last_time
+                  if since_last < timedelta(hours=17):
+                      should_post = False
+                      print(f"Last post {since_last.total_seconds()//3600:.1f}h ago. Skipping.")
+                  else:
+                      print(f"Last post {since_last.total_seconds()//3600:.1f}h ago. Posting!")
+              else:
+                  print("No tweets found. First post!")
+          except Exception as e:
+              print(f"Could not check timeline: {e}")
+              print("Will post anyway (safe fallback).")
 
-          # === Post if due ===
-          if should_post():
+          # === Post if needed ===
+          if should_post:
               complaint = random.choice(complaints)
               try:
                   api.update_status(complaint)
-                  print(f"Posted: {complaint}")
+                  print(f"SUCCESS: Posted → {complaint}")
               except Exception as e:
                   print(f"Failed to post: {e}")
           else:
-              print("Last post was < 12 hours ago. Skipping.")
-          EOF
+              print("Post skipped.")
+          PY
