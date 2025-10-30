@@ -2,7 +2,7 @@ name: Starfleet HR Complaint Poster
 
 on:
   schedule:
-    - cron: '20 */12 * * *'  # Every 4 hours
+    - cron: '20 */12 * * *'  # Every 12 hours
   workflow_dispatch:     # Allow manual run
 
 jobs:
@@ -89,5 +89,5 @@ jobs:
               except Exception as e:
                   print(f"Failed to post: {e}")
           else:
-              print("Last post was < 17 hours ago. Skipping.")
+              print("Last post was < 12 hours ago. Skipping.")
           EOF
