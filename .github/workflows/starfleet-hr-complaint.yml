@@ -2,7 +2,7 @@ name: Starfleet HR Complaint
 
 on:
   schedule:
-    - cron: '25 */4 * * *'     # Every 4 hours
+    - cron: '0 */4 * * *'     # Every 4 hours
   workflow_dispatch:
 
 jobs:
